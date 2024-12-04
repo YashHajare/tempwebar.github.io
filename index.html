@@ -1,11 +1,33 @@
-<html>
-<script src="https://aframe.io/releases/0.8.0/aframe.min.js"></script>
-<script src="https://cdn.rawgit.com/jeromeetienne/AR.js/1.6.0/aframe/build/aframe-ar.js"></script>
-<body style='margin : 0px; overflow: hidden;'>
-	<a-scene embedded arjs>
-		<a-marker-camera preset='hiro'>
-		<a-box position='0 0.5 0' material='opacity: 1;'></a-box>
-		</a-marker-camera>
-	</a-scene>
-</body>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Custom Marker with A-Frame and AR.js</title>
+    <!-- A-Frame Library -->
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <!-- AR.js Library -->
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/aframe/build/aframe-ar.js"></script>
+  </head>
+  <body style="margin: 0px; overflow: hidden;">
+    <!-- A-Frame Scene for Marker Tracking -->
+    <a-scene
+      embedded
+      arjs="sourceType: webcam; debugUIEnabled: false; trackingMethod: best"
+    >
+      <!-- Custom Marker: Replace with your .patt file path -->
+      <a-marker-camera preset="custom" type="pattern" url="./pattern-letterG.patt">
+        <!-- 3D Model that will appear when the custom marker is detected -->
+        <a-entity
+          gltf-model="./AnimatedCube.gltf"
+          scale="0.5 0.5 0.5"
+          position="0 0 0"
+          rotation="0 180 0"
+        ></a-entity>
+      </a-marker-camera>
+      
+      <!-- Camera Entity for AR Tracking -->
+      <a-entity camera></a-entity>
+    </a-scene>
+  </body>
 </html>
