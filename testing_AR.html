@@ -3,120 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <title>AR Plane Detection</title>
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/aframe-hit-test-component@1.0.0"></script>
     <style>
-        body { margin: 0; overflow: hidden; }
+        body { margin: 0; }
     </style>
 </head>
 <body>
-    <script type="module">
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.module.js';
-        import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.153.0/examples/jsm/webxr/ARButton.js';
-        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.153.0/examples/jsm/loaders/GLTFLoader.js';
+    <a-scene 
+        arjs="sourceType: webcam; debugUIEnabled: false;" 
+        vr-mode-ui="enabled: false" 
+        embedded 
+        raycaster="objects: [clickable]" 
+        renderer="colorManagement: true; physicallyCorrectLights: true">
+        
+        <a-light type="directional" intensity="0.8" position="0 1 0"></a-light>
+        <a-camera position="0 0 0"></a-camera>
 
-        let camera, scene, renderer, controller;
-        let reticle; // For plane detection
-        let hitTestSource = null;
-        let hitTestSourceRequested = false;
+        <!-- Reticle to show where plane is detected -->
+        <a-entity id="reticle" geometry="primitive: ring; radiusInner: 0.05; radiusOuter: 0.07" 
+                  material="color: green; shader: flat" 
+                  position="0 0 0" 
+                  rotation="-90 0 0" 
+                  visible="false">
+        </a-entity>
 
-        init();
-        animate();
+        <!-- 3D object to place on tap -->
+        <a-gltf-model id="model" src="https://raw.githack.com/aframevr/assets/master/examples/ar/models/reticle/reticle.gltf" 
+                      position="0 0 0" 
+                      scale="0.1 0.1 0.1" 
+                      visible="false">
+        </a-gltf-model>
 
-        function init() {
-            // Scene and Camera
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+    </a-scene>
 
-            // Renderer
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.xr.enabled = true;
-            document.body.appendChild(renderer.domElement);
+    <script>
+        const reticle = document.querySelector('#reticle');
+        const model = document.querySelector('#model');
+        let isPlaneFound = false;
 
-            // Add AR button to enter AR mode
-            document.body.appendChild(ARButton.createButton(renderer));
-
-            // Light
-            const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
-            scene.add(light);
-
-            // Reticle for plane detection
-            reticle = new THREE.Mesh(
-                new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
-                new THREE.MeshBasicMaterial({ color: 0x00ff00 })
-            );
-            reticle.visible = false;
-            scene.add(reticle);
-
-            // Controller for detecting taps
-            controller = renderer.xr.getController(0);
-            controller.addEventListener('select', onSelect);
-            scene.add(controller);
-
-            // Load 3D Model (GLTF Model)
-            const loader = new GLTFLoader();
-            loader.load('https://threejs.org/examples/models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf', function (gltf) {
-                window.model = gltf.scene; // Store the model globally to place it later
-            });
-        }
-
-        function onSelect() {
-            if (reticle.visible) {
-                // Clone the model (so multiple taps create multiple models)
-                const modelClone = window.model.clone();
-                modelClone.position.setFromMatrixPosition(reticle.matrix);
-                modelClone.scale.set(0.2, 0.2, 0.2); // Scale the model
-                scene.add(modelClone);
-            }
-        }
-
-        function animate() {
-            renderer.setAnimationLoop(render);
-        }
-
-        function render(timestamp, frame) {
-            if (frame) {
-                const referenceSpace = renderer.xr.getReferenceSpace();
-                const session = renderer.xr.getSession();
-
-                if (hitTestSourceRequested === false) {
-                    session.requestReferenceSpace('viewer').then(function (referenceSpace) {
-                        session.requestHitTestSource({ space: referenceSpace }).then(function (source) {
-                            hitTestSource = source;
-                        });
-                    });
-
-                    session.addEventListener('end', function () {
-                        hitTestSourceRequested = false;
-                        hitTestSource = null;
-                    });
-
-                    hitTestSourceRequested = true;
-                }
-
-                if (hitTestSource) {
-                    const hitTestResults = frame.getHitTestResults(hitTestSource);
-
-                    if (hitTestResults.length > 0) {
-                        const hit = hitTestResults[0];
-                        const pose = hit.getPose(referenceSpace);
-
-                        reticle.visible = true;
-                        reticle.matrix.fromArray(pose.transform.matrix);
-                    } else {
-                        reticle.visible = false;
-                    }
-                }
-            }
-
-            renderer.render(scene, camera);
-        }
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+        // Detect when a plane is found
+        document.querySelector('a-scene').addEventListener('xrhit', (event) => {
+            isPlaneFound = true;
+            const hit = event.detail.intersections[0];
+            reticle.setAttribute('position', hit.point);
+            reticle.setAttribute('visible', true);
         });
 
+        // Place the 3D model on tap
+        reticle.addEventListener('click', () => {
+            if (isPlaneFound) {
+                const position = reticle.getAttribute('position');
+                model.setAttribute('position', position);
+                model.setAttribute('visible', true);
+            }
+        });
     </script>
 </body>
 </html>
