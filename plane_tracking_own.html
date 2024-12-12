@@ -1,132 +1,141 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Plane Tracking with Camera</title>
-  <style>
-    body { 
-      margin: 0; 
-      overflow: hidden; 
-    }
-    video, canvas { 
-      position: absolute; 
-      top: 0; 
-      left: 0; 
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Plane Tracking</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        video, canvas { position: absolute; top: 0; left: 0; }
+    </style>
 </head>
 <body>
 
-<!-- Video feed from the camera -->
-<video id="videoInput" autoplay playsinline></video>
+<!-- Video from the webcam -->
+<video id="video" autoplay playsinline width="640" height="480"></video>
 
-<!-- Canvas for edge detection (OpenCV) -->
-<canvas id="canvasOutput"></canvas>
-
-<!-- 3D Scene using Three.js -->
-<div id="webgl-container"></div>
-
-<!-- Include external libraries -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/110/three.min.js"></script>
-<script src="https://docs.opencv.org/4.x/opencv.js"></script>
+<!-- Canvas for visualizing feature points and the detected plane -->
+<canvas id="canvas" width="640" height="480"></canvas>
 
 <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
 
-  // --- 1. Access and Display Camera Stream ---
-  const video = document.getElementById('videoInput');
-  const canvas = document.getElementById('canvasOutput');
-  const ctx = canvas.getContext('2d');
-
-  async function startCamera() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      video.srcObject = stream;
-      console.log("✅ Camera started successfully");
-    } catch (error) {
-      console.error("❌ Error starting camera:", error);
-      alert("Camera access failed: " + error.message);
-    }
-  }
-
-  video.addEventListener('play', () => {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    console.log("✅ Video started, canvas dimensions set");
-
-    const cap = new cv.VideoCapture(video);
-    const mat = new cv.Mat(canvas.height, canvas.width, cv.CV_8UC4);
-    const edges = new cv.Mat();
-    const lines = new cv.Mat();
-
-    function processFrame() {
-      try {
-        cap.read(mat);
-        cv.cvtColor(mat, mat, cv.COLOR_RGBA2GRAY, 0);
-        cv.Canny(mat, edges, 50, 150, 3);
-
-        // Detect lines using Hough Line Transform
-        cv.HoughLinesP(edges, lines, 1, Math.PI / 180, 50, 50, 10);
-
-        // Draw the detected lines (for visual representation)
-        for (let i = 0; i < lines.rows; i++) {
-          const [x1, y1, x2, y2] = lines.data32S.slice(i * 4, i * 4 + 4);
-          cv.line(mat, new cv.Point(x1, y1), new cv.Point(x2, y2), [0, 255, 0, 255], 2);
+    // 1. Start the webcam
+    async function startCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+            console.log("✅ Camera started successfully");
+        } catch (error) {
+            console.error("❌ Camera error:", error);
+            alert("Please allow camera access.");
         }
-
-        cv.imshow('canvasOutput', mat);
-      } catch (error) {
-        console.error("❌ Error processing frame:", error);
-      }
-      requestAnimationFrame(processFrame);
     }
 
-    processFrame();
-  });
+    // 2. Start camera
+    startCamera();
 
-  // Start the camera
-  startCamera();
+    // 3. Main tracking function
+    function trackPlane() {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Get image data from the video feed
+        const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        
+        // Apply a basic gray filter to the image
+        const grayFrame = toGrayscale(frame);
 
-  // --- 2. Create Three.js Scene for 3D Overlay ---
-  const container = document.getElementById('webgl-container');
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  const renderer = new THREE.WebGLRenderer({ alpha: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  container.appendChild(renderer.domElement);
+        // Find corners (keypoints) using a simple corner detection algorithm
+        const keypoints = detectCorners(grayFrame, canvas.width, canvas.height);
 
-  // Add a light source
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-  scene.add(ambientLight);
+        // Draw the keypoints on the canvas
+        drawKeypoints(keypoints);
 
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  directionalLight.position.set(0, 1, 1).normalize();
-  scene.add(directionalLight);
+        // Identify a plane from the keypoints (just a simple implementation)
+        drawPlaneFromKeypoints(keypoints);
 
-  // --- 3. Add 3D Plane to the Scene ---
-  const geometry = new THREE.PlaneGeometry(1, 1);
-  const material = new THREE.MeshBasicMaterial({ color: 0xff5733, side: THREE.DoubleSide });
-  const plane = new THREE.Mesh(geometry, material);
-  scene.add(plane);
+        // Repeat this function
+        requestAnimationFrame(trackPlane);
+    }
 
-  // Position the 3D plane at the center of the scene
-  plane.position.set(0, 0, -2);
+    // 4. Convert the image to grayscale
+    function toGrayscale(imageData) {
+        const grayData = new Uint8ClampedArray(imageData.data.length);
+        for (let i = 0; i < imageData.data.length; i += 4) {
+            const r = imageData.data[i];
+            const g = imageData.data[i + 1];
+            const b = imageData.data[i + 2];
+            const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+            grayData[i] = grayData[i + 1] = grayData[i + 2] = gray;
+            grayData[i + 3] = 255; // Alpha channel
+        }
+        return new ImageData(grayData, imageData.width, imageData.height);
+    }
 
-  // Add rotation for visual effect
-  function animate() {
-    requestAnimationFrame(animate);
-    plane.rotation.x += 0.01; // Rotate the plane on the X-axis
-    plane.rotation.y += 0.01; // Rotate the plane on the Y-axis
-    renderer.render(scene, camera);
-  }
-  animate();
+    // 5. Detect simple corners in the frame
+    function detectCorners(imageData, width, height) {
+        const corners = [];
+        const threshold = 30;
 
-  // Adjust the camera and scene on window resize
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                const pixelIndex = (y * width + x) * 4;
+                const pixel = imageData.data[pixelIndex];
+
+                // Simple corner detection logic (like Harris corner but simpler)
+                const topLeft = imageData.data[pixelIndex - (width + 1) * 4];
+                const top = imageData.data[pixelIndex - width * 4];
+                const topRight = imageData.data[pixelIndex - (width - 1) * 4];
+                const left = imageData.data[pixelIndex - 4];
+                const right = imageData.data[pixelIndex + 4];
+                const bottomLeft = imageData.data[pixelIndex + (width - 1) * 4];
+                const bottom = imageData.data[pixelIndex + width * 4];
+                const bottomRight = imageData.data[pixelIndex + (width + 1) * 4];
+
+                const score = Math.abs(pixel - top) +
+                              Math.abs(pixel - bottom) +
+                              Math.abs(pixel - left) +
+                              Math.abs(pixel - right);
+
+                if (score > threshold) {
+                    corners.push({ x, y });
+                }
+            }
+        }
+        return corners;
+    }
+
+    // 6. Draw the detected keypoints on the canvas
+    function drawKeypoints(keypoints) {
+        ctx.fillStyle = "red";
+        keypoints.forEach(point => {
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, 2, 0, 2 * Math.PI);
+            ctx.fill();
+        });
+    }
+
+    // 7. Draw a plane based on the detected keypoints
+    function drawPlaneFromKeypoints(keypoints) {
+        if (keypoints.length < 10) return;
+
+        // Find the minimum and maximum x and y to define a simple plane
+        const minX = Math.min(...keypoints.map(p => p.x));
+        const minY = Math.min(...keypoints.map(p => p.y));
+        const maxX = Math.max(...keypoints.map(p => p.x));
+        const maxY = Math.max(...keypoints.map(p => p.y));
+
+        ctx.strokeStyle = "blue";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    // Start the main plane tracking loop
+    video.addEventListener('play', () => {
+        trackPlane();
+    });
 
 </script>
 
