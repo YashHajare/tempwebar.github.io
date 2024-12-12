@@ -1,143 +1,73 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Plane Tracking</title>
-    <style>
-        body { margin: 0; overflow: hidden; }
-        video, canvas { position: absolute; top: 0; left: 0; }
-    </style>
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Plane Surface Tracking with AR.js</title>
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ar.js/aframe/build/aframe-ar.js"></script>
+  </head>
+  <body style="margin: 0; overflow: hidden;">
+    <!-- AR.js with A-Frame for plane tracking -->
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false; trackingMethod: best;">
+      <!-- The camera used for AR tracking -->
+      <a-camera></a-camera>
 
-<!-- Video from the webcam -->
-<video id="video" autoplay playsinline width="640" height="480"></video>
+      <!-- Entity for detecting plane surface -->
+      <a-entity id="surface" 
+                position="0 0 0" 
+                geometry="primitive: plane; width: 5; height: 5" 
+                material="color: blue; opacity: 0.5" 
+                visible="false" 
+                arjs-planar-tracking="type: world; maxDistance: 10;">
+      </a-entity>
 
-<!-- Canvas for visualizing feature points and the detected plane -->
-<canvas id="canvas" width="640" height="480"></canvas>
+      <!-- 3D Object (Cube) that will be placed on the surface -->
+      <a-box id="cube" 
+             position="0 0 0" 
+             color="#f00" 
+             scale="0.5 0.5 0.5" 
+             visible="false">
+      </a-box>
 
-<script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
+      <!-- Light source -->
+      <a-light type="directional" position="5 10 10" intensity="0.5"></a-light>
+    </a-scene>
 
-    // 1. Start the webcam
-    async function startCamera() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            video.srcObject = stream;
-            console.log("✅ Camera started successfully");
-        } catch (error) {
-            console.error("❌ Camera error:", error);
-            alert("Please allow camera access.");
-        }
-    }
+    <script>
+      let surfaceDetected = false;
 
-    // 2. Start camera
-    startCamera();
+      const scene = document.querySelector('a-scene');
+      const surface = document.querySelector('#surface');
+      const cube = document.querySelector('#cube');
 
-    // 3. Main tracking function
-    function trackPlane() {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        // Get image data from the video feed
-        const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        // Apply a basic gray filter to the image
-        const grayFrame = toGrayscale(frame);
+      // Listen for surface detection
+      scene.addEventListener('loaded', function () {
+        const arjsContext = scene.systems['arjs'];
+        const arjsSource = arjsContext.source;
 
-        // Find corners (keypoints) using a simple corner detection algorithm
-        const keypoints = detectCorners(grayFrame, canvas.width, canvas.height);
-
-        // Draw the keypoints on the canvas
-        drawKeypoints(keypoints);
-
-        // Identify a plane from the keypoints (just a simple implementation)
-        drawPlaneFromKeypoints(keypoints);
-
-        // Repeat this function
-        requestAnimationFrame(trackPlane);
-    }
-
-    // 4. Convert the image to grayscale
-    function toGrayscale(imageData) {
-        const grayData = new Uint8ClampedArray(imageData.data.length);
-        for (let i = 0; i < imageData.data.length; i += 4) {
-            const r = imageData.data[i];
-            const g = imageData.data[i + 1];
-            const b = imageData.data[i + 2];
-            const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-            grayData[i] = grayData[i + 1] = grayData[i + 2] = gray;
-            grayData[i + 3] = 255; // Alpha channel
-        }
-        return new ImageData(grayData, imageData.width, imageData.height);
-    }
-
-    // 5. Detect simple corners in the frame
-    function detectCorners(imageData, width, height) {
-        const corners = [];
-        const threshold = 30;
-
-        for (let y = 1; y < height - 1; y++) {
-            for (let x = 1; x < width - 1; x++) {
-                const pixelIndex = (y * width + x) * 4;
-                const pixel = imageData.data[pixelIndex];
-
-                // Simple corner detection logic (like Harris corner but simpler)
-                const topLeft = imageData.data[pixelIndex - (width + 1) * 4];
-                const top = imageData.data[pixelIndex - width * 4];
-                const topRight = imageData.data[pixelIndex - (width - 1) * 4];
-                const left = imageData.data[pixelIndex - 4];
-                const right = imageData.data[pixelIndex + 4];
-                const bottomLeft = imageData.data[pixelIndex + (width - 1) * 4];
-                const bottom = imageData.data[pixelIndex + width * 4];
-                const bottomRight = imageData.data[pixelIndex + (width + 1) * 4];
-
-                const score = Math.abs(pixel - top) +
-                              Math.abs(pixel - bottom) +
-                              Math.abs(pixel - left) +
-                              Math.abs(pixel - right);
-
-                if (score > threshold) {
-                    corners.push({ x, y });
-                }
-            }
-        }
-        return corners;
-    }
-
-    // 6. Draw the detected keypoints on the canvas
-    function drawKeypoints(keypoints) {
-        ctx.fillStyle = "red";
-        keypoints.forEach(point => {
-            ctx.beginPath();
-            ctx.arc(point.x, point.y, 2, 0, 2 * Math.PI);
-            ctx.fill();
+        // Event listener for surface detection
+        arjsSource.addEventListener('arjs-plane-detection', function (event) {
+          if (event.detail.detected) {
+            surfaceDetected = true;
+            surface.setAttribute('visible', true);
+            cube.setAttribute('visible', true);
+          } else {
+            surfaceDetected = false;
+            surface.setAttribute('visible', false);
+            cube.setAttribute('visible', false);
+          }
         });
-    }
+      });
 
-    // 7. Draw a plane based on the detected keypoints
-    function drawPlaneFromKeypoints(keypoints) {
-        if (keypoints.length < 10) return;
-
-        // Find the minimum and maximum x and y to define a simple plane
-        const minX = Math.min(...keypoints.map(p => p.x));
-        const minY = Math.min(...keypoints.map(p => p.y));
-        const maxX = Math.max(...keypoints.map(p => p.x));
-        const maxY = Math.max(...keypoints.map(p => p.y));
-
-        ctx.strokeStyle = "blue";
-        ctx.lineWidth = 3;
-        ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
-    }
-
-    // Start the main plane tracking loop
-    video.addEventListener('play', () => {
-        trackPlane();
-    });
-
-</script>
-
-</body>
+      // When the user clicks on the surface, place the object
+      cube.addEventListener('click', function () {
+        if (surfaceDetected) {
+          // Place the cube on the surface
+          cube.setAttribute('position', surface.getAttribute('position'));
+          cube.setAttribute('visible', true);
+        }
+      });
+    </script>
+  </body>
 </html>
